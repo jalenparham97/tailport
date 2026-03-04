@@ -1,136 +1,107 @@
 # Tailport
 
-Expose local and tailnet services to the internet with clean subdomain URLs — powered by [Tailscale Funnel](https://tailscale.com/kb/1223/tailscale-funnel) and a Bun-based reverse proxy.
+Expose local servers to the internet with clean subdomain URLs — no account, no config, just a single command.
 
 ```
-tailport expose api localhost:3000
-→ https://api.tailport.dev
+tailport expose myapp 3000
+→ https://myapp.tailport.dev
 ```
 
 ## How It Works
 
-Tailport runs a single router on port `9000` and exposes it via Tailscale Funnel. Incoming requests are dispatched by subdomain using the `Host` header:
+Tailport runs a hosted relay server (on Railway) behind Cloudflare Tunnel. When you run `tailport expose`, the CLI opens a persistent WebSocket to the relay server and registers a subdomain. Incoming HTTPS requests for that subdomain are forwarded over the WebSocket to your local machine and proxied to the port you specified.
 
 ```
-Internet → Tailscale Funnel → *.tailport.dev → Tailport Router (port 9000)
-                                                    │
-                               ┌────────────────────┼────────────────────┐
-                           api:3000          grafana:3001          llm:11434
+Internet → Cloudflare Tunnel → *.tailport.dev → Relay Server (Railway)
+                                                        │  WebSocket
+                                                   tailport CLI
+                                                        │
+                                                 localhost:3000
 ```
 
-The router reads the first subdomain, looks it up in `~/.config/tailport/routes.json`, and proxies the request — preserving the method, headers, and body stream so webhooks and POST traffic work without modification.
+No ports need to be opened. No cloud account required. Ctrl+C to disconnect.
 
-Routes are reloaded automatically whenever the config file changes, so you never need to restart the router after adding or removing a service.
-
-## Prerequisites
-
-- [Bun](https://bun.sh) installed
-- [Tailscale](https://tailscale.com) installed and authenticated on the machine running Tailport
-- A DNS wildcard record: `*.tailport.dev → your router machine` (via Tailscale Funnel)
-
-## Quickstart
+## Install
 
 ```bash
-# 1. Install dependencies
-bun install
+curl -fsSL https://raw.githubusercontent.com/jalenparham97/tailport/main/scripts/install.sh | sudo sh
+```
 
-# 2. Build the standalone binary
-bun run build
+## Usage
 
-# 3. Start the router and enable Tailscale Funnel
-./tailport start
+```bash
+# Authenticate (one time)
+tailport auth login <your-token>
 
-# 4. In another terminal, expose a service
-./tailport expose api localhost:3000
+# Expose a local server
+tailport expose myapp 3000
+# → https://myapp.tailport.dev
 
-# 5. Access it publicly
-# https://api.tailport.dev
+# Expose with a full URL target
+tailport expose myapp http://localhost:3000
+
+# List active tunnels (self-hosted mode)
+tailport list
+
+# Remove a route (self-hosted mode)
+tailport remove myapp
 ```
 
 ## Commands
 
-### `tailport start`
-
-Starts the Bun router on port `9000` and enables Tailscale Funnel:
+### `tailport auth`
 
 ```bash
-./tailport start
+tailport auth login <token>   # Save your auth token
+tailport auth logout          # Remove saved token
+tailport auth token           # Print current token
+tailport auth generate        # Generate a token (admin, requires TAILPORT_TOKEN_SECRET)
 ```
-
-- Creates `~/.config/tailport/routes.json` if it does not exist
-- Runs `tailscale funnel 9000`
-- Keeps the router running until `Ctrl+C`
 
 ---
 
-### `tailport expose <name> <target>`
+### `tailport expose <name> <port>`
 
-Registers a new route and prints the public URL:
-
-```bash
-./tailport expose api       localhost:3000
-./tailport expose frontend  localhost:5173
-./tailport expose grafana   nas:3001
-./tailport expose llm       gpu-box:11434
-```
-
-- `name` — subdomain label (lowercase letters, numbers, and hyphens)
-- `target` — `<host>:<port>` of the upstream service (local or anywhere on your tailnet)
-
-The running router picks up the change instantly without a restart.
-
----
-
-### `tailport remove <name>`
-
-Removes a route:
+Opens a tunnel and exposes `localhost:<port>` at `https://<name>.tailport.dev`.
 
 ```bash
-./tailport remove api
+tailport expose myapp 3000
+tailport expose webhooks 8080
+tailport expose api 4000
 ```
+
+Press `Ctrl+C` to disconnect and free the subdomain.
 
 ---
 
 ### `tailport list`
 
-Prints all registered services and their public URLs:
+Prints all registered routes (self-hosted mode only).
+
+---
+
+### `tailport remove <name>`
+
+Removes a route (self-hosted mode only).
+
+---
+
+### `tailport setup`
+
+One-time setup for self-hosted mode. Installs cloudflared, creates a Cloudflare Tunnel, and writes the config.
+
+---
+
+### `tailport start`
+
+Starts the local router and cloudflared tunnel (self-hosted mode only).
+
+## Building from Source
 
 ```bash
-./tailport list
-```
-
-```
-Name        Target              URL
-api         localhost:3000      https://api.tailport.dev
-frontend    localhost:5173      https://frontend.tailport.dev
-grafana     nas:3001            https://grafana.tailport.dev
-```
-
-## Configuration
-
-Routes are stored at `~/.config/tailport/routes.json`:
-
-```json
-{
-  "api": "localhost:3000",
-  "frontend": "localhost:5173",
-  "grafana": "nas:3001",
-  "llm": "gpu-box:11434"
-}
-```
-
-You can edit this file directly — the router reloads it automatically on save.
-
-## Building the Binary
-
-```bash
-bun run build
-```
-
-Compiles `cli/index.ts` into a single self-contained executable (no Bun runtime required on the target machine):
-
-```bash
-./tailport --help
+bun install
+bun run build        # Compiles to ./tailport binary
+bun run typecheck    # TypeScript type check
 ```
 
 ## Scripts
@@ -138,8 +109,8 @@ Compiles `cli/index.ts` into a single self-contained executable (no Bun runtime 
 | Command             | Description                                 |
 | ------------------- | ------------------------------------------- |
 | `bun run dev`       | Run the CLI via Bun directly                |
-| `bun run start`     | Run `tailport start` via Bun                |
 | `bun run build`     | Compile to a standalone `./tailport` binary |
+| `bun run server`    | Run the relay server locally                |
 | `bun run typecheck` | TypeScript type check with no emit          |
 
 ## Project Structure
@@ -149,16 +120,22 @@ tailport/
 ├── cli/
 │   ├── index.ts              # Command dispatcher
 │   └── commands/
-│       ├── start.ts          # tailport start
+│       ├── auth.ts           # tailport auth
 │       ├── expose.ts         # tailport expose
+│       ├── start.ts          # tailport start (self-hosted)
+│       ├── setup.ts          # tailport setup (self-hosted)
 │       ├── remove.ts         # tailport remove
 │       └── list.ts           # tailport list
-├── router/
-│   └── server.ts             # Bun HTTP reverse proxy
+├── server/
+│   ├── index.ts              # Relay server (deployed on Railway)
+│   ├── registry.ts           # WebSocket client registry
+│   └── proxy.ts              # HTTP-over-WebSocket forwarding
 ├── lib/
 │   ├── config.ts             # Config path helpers
-│   ├── routes.ts             # Route persistence (read/write/validate)
-│   └── tailscale.ts          # tailscale funnel subprocess
+│   └── routes.ts             # Route persistence (self-hosted)
+├── scripts/
+│   └── install.sh            # curl install script
+├── Dockerfile                # Production image (Alpine + cloudflared)
 ├── package.json
 └── tsconfig.json
 ```
@@ -168,4 +145,7 @@ tailport/
 - **Webhook testing** — receive live webhook payloads from GitHub, Stripe, etc.
 - **Remote demos** — share a dev server with a client without deploying
 - **API integration testing** — expose a local API to a third-party service
-- **Tailnet services** — proxy machines like `nas`, `gpu-box`, or `pi` through a single public entry point
+
+## Self-Hosted Mode
+
+Set `TAILPORT_TUNNEL_NAME` in your environment to run tailport against your own Cloudflare Tunnel instead of the hosted relay. Run `tailport setup` to configure it.

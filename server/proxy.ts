@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { addPending, getClient } from './registry';
+import { addPending, getClient, removePending } from './registry';
 
 const REQUEST_TIMEOUT_MS = 30_000;
 
@@ -26,6 +26,7 @@ export async function forwardRequest(
 
   return new Promise((resolve) => {
     const timeout = setTimeout(() => {
+      removePending(subdomain, id);
       resolve(new Response('Tunnel request timed out', { status: 504 }));
     }, REQUEST_TIMEOUT_MS);
 

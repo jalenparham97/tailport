@@ -1,4 +1,5 @@
 import { DEFAULT_DOMAIN, TAILPORT_SERVER_URL } from '../../lib/config';
+import { readToken } from './auth';
 import { setRoute } from '../../lib/routes';
 
 export async function runExposeCommand(
@@ -13,7 +14,11 @@ export async function runExposeCommand(
   if (Bun.env.TAILPORT_TUNNEL_NAME) {
     await runLocalExpose(name, target);
   } else {
-    await runHostedExpose(name, target, TAILPORT_SERVER_URL);
+    const token = await readToken();
+    if (!token) {
+      throw new Error('Not authenticated. Run: tailport auth login <token>');
+    }
+    await runHostedExpose(name, target, TAILPORT_SERVER_URL, token);
   }
 }
 
@@ -31,6 +36,7 @@ async function runHostedExpose(
   name: string,
   target: string,
   serverUrl: string,
+  token: string,
 ): Promise<void> {
   // Normalise local target to a full URL
   const upstream = target.includes('://')
@@ -55,7 +61,7 @@ async function runHostedExpose(
       reject(new Error(`Could not connect to tailport server at ${wsUrl}`));
     });
     ws.addEventListener('open', () => {
-      ws.send(JSON.stringify({ type: 'register', subdomain: name }));
+      ws.send(JSON.stringify({ type: 'register', subdomain: name, token }));
     });
 
     ws.addEventListener('message', async (event) => {

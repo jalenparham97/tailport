@@ -1,6 +1,33 @@
 import { register, resolvePending, unregister } from './registry';
 import type { WSData } from './registry';
 import { forwardRequest } from './proxy';
+import { createHmac, timingSafeEqual } from 'node:crypto';
+
+// ---------------------------------------------------------------------------
+// Auth — stateless bearer token (Model B: any subdomain)
+// Token = hex-hmac-sha256("tailport-access", TOKEN_SECRET)
+// To upgrade to a DB in future: replace validateToken() only.
+// ---------------------------------------------------------------------------
+const TOKEN_SECRET = Bun.env.TAILPORT_TOKEN_SECRET ?? '';
+const AUTH_ENABLED = TOKEN_SECRET.length > 0;
+
+function validateToken(token: string): boolean {
+  if (!AUTH_ENABLED) return true; // auth disabled when secret not set
+  const expected = createHmac('sha256', TOKEN_SECRET)
+    .update('tailport-access')
+    .digest('hex');
+  try {
+    return timingSafeEqual(
+      Buffer.from(token, 'hex'),
+      Buffer.from(expected, 'hex'),
+    );
+  } catch {
+    return false;
+  }
+}
+
+// Reserved subdomains that must not be claimable by users
+const RESERVED = new Set(['connect', 'www', 'admin', 'api', 'mail', 'ftp']);
 
 // Start cloudflared tunnel when running on Railway (or any env with token set)
 // Keep reference alive to prevent garbage collection from killing the subprocess
@@ -95,6 +122,21 @@ Bun.serve<WSData>({
           ws.send(
             JSON.stringify({ type: 'error', message: 'subdomain is required' }),
           );
+          ws.close();
+          return;
+        }
+
+        if (RESERVED.has(subdomain) || subdomain === CONTROL_SUBDOMAIN) {
+          ws.send(
+            JSON.stringify({ type: 'error', message: 'subdomain is reserved' }),
+          );
+          ws.close();
+          return;
+        }
+
+        const token = String(data.token ?? '');
+        if (!validateToken(token)) {
+          ws.send(JSON.stringify({ type: 'error', message: 'invalid token' }));
           ws.close();
           return;
         }

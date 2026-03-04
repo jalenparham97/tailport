@@ -1,3 +1,4 @@
+import { runAuthCommand } from './commands/auth';
 import { runExposeCommand } from './commands/expose';
 import { runListCommand } from './commands/list';
 import { runRemoveCommand } from './commands/remove';
@@ -8,11 +9,12 @@ function printHelp(): void {
   console.log(`tailport
 
 Usage:
-  tailport setup
-  tailport start
+  tailport auth login <token>
   tailport expose <name> <target>
   tailport remove <name>
-  tailport list`);
+  tailport list
+  tailport setup
+  tailport start`);
 }
 
 async function main(): Promise<void> {
@@ -33,6 +35,9 @@ async function main(): Promise<void> {
       return;
     case 'list':
       await runListCommand();
+      return;
+    case 'auth':
+      await runAuthCommand(args[0], args.slice(1));
       return;
     case 'help':
     case '--help':

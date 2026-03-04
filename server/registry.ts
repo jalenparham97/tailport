@@ -65,3 +65,7 @@ export function resolvePending(
     handlers.resolve(response);
   }
 }
+
+export function removePending(subdomain: string, id: string): void {
+  pending.get(subdomain)?.delete(id);
+}

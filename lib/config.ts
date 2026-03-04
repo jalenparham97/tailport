@@ -41,6 +41,10 @@ export function getCloudflaredConfigPath(): string {
   return join(getConfigDir(), 'cloudflared.yml');
 }
 
+export function getAuthFilePath(): string {
+  return join(getConfigDir(), 'auth.json');
+}
+
 export async function ensureConfigFile(): Promise<string> {
   const configDir = getConfigDir();
   const routesFile = getRoutesFilePath();
