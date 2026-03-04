@@ -10,6 +10,9 @@ if (Bun.env.CLOUDFLARE_TUNNEL_TOKEN) {
     [
       'cloudflared',
       'tunnel',
+      '--protocol',
+      'http2',
+      '--no-autoupdate',
       'run',
       '--token',
       Bun.env.CLOUDFLARE_TUNNEL_TOKEN,
