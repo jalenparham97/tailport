@@ -1,26 +1,21 @@
 import { register, resolvePending, unregister } from './registry';
 import type { WSData } from './registry';
 import { forwardRequest } from './proxy';
-import { createHmac, timingSafeEqual } from 'node:crypto';
+import { timingSafeEqual } from 'node:crypto';
 
 // ---------------------------------------------------------------------------
-// Auth — stateless bearer token (Model B: any subdomain)
-// Token = hex-hmac-sha256("tailport-access", TOKEN_SECRET)
-// To upgrade to a DB in future: replace validateToken() only.
+// Auth — TAILPORT_TOKEN_SECRET is the token. Users run:
+//   tailport auth login <value of TAILPORT_TOKEN_SECRET>
 // ---------------------------------------------------------------------------
 const TOKEN_SECRET = Bun.env.TAILPORT_TOKEN_SECRET ?? '';
 const AUTH_ENABLED = TOKEN_SECRET.length > 0;
 
 function validateToken(token: string): boolean {
-  if (!AUTH_ENABLED) return true; // auth disabled when secret not set
-  const expected = createHmac('sha256', TOKEN_SECRET)
-    .update('tailport-access')
-    .digest('hex');
+  if (!AUTH_ENABLED) return true;
   try {
-    return timingSafeEqual(
-      Buffer.from(token, 'hex'),
-      Buffer.from(expected, 'hex'),
-    );
+    const a = Buffer.from(token);
+    const b = Buffer.from(TOKEN_SECRET);
+    return a.length === b.length && timingSafeEqual(a, b);
   } catch {
     return false;
   }

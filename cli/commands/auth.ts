@@ -1,4 +1,3 @@
-import { createHmac } from 'node:crypto';
 import { mkdir } from 'node:fs/promises';
 import { getAuthFilePath, getConfigDir } from '../../lib/config';
 
@@ -26,9 +25,6 @@ export async function runAuthCommand(
     case 'logout':
       await authLogout();
       break;
-    case 'generate':
-      authGenerate();
-      break;
     case 'token':
       await authShowToken();
       break;
@@ -36,10 +32,9 @@ export async function runAuthCommand(
       console.log(`tailport auth
 
 Usage:
-  tailport auth login <token>  Save an auth token
+  tailport auth login <token>  Save your TAILPORT_TOKEN_SECRET as the auth token
   tailport auth logout         Remove saved token
-  tailport auth token          Print current token
-  tailport auth generate       Generate a token (requires TAILPORT_TOKEN_SECRET)`);
+  tailport auth token          Print current token`);
   }
 }
 
@@ -68,17 +63,8 @@ async function authShowToken(): Promise<void> {
   if (token) {
     console.log(token);
   } else {
-    console.log('[tailport] no token saved — run: tailport auth login <token>');
+    console.log(
+      '[tailport] no token saved — run: tailport auth login <TAILPORT_TOKEN_SECRET>',
+    );
   }
-}
-
-function authGenerate(): void {
-  const secret = Bun.env.TAILPORT_TOKEN_SECRET;
-  if (!secret) {
-    throw new Error('TAILPORT_TOKEN_SECRET is not set in your environment.');
-  }
-  const token = createHmac('sha256', secret)
-    .update('tailport-access')
-    .digest('hex');
-  console.log(token);
 }
