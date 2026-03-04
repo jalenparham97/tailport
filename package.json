@@ -1,0 +1,17 @@
+{
+  "name": "tailport",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "bun run cli/index.ts",
+    "start": "bun run cli/index.ts start",
+    "build": "bun build cli/index.ts --compile --outfile tailport",
+    "server": "bun run server/index.ts",
+    "typecheck": "bunx tsc --noEmit"
+  },
+  "devDependencies": {
+    "bun-types": "latest",
+    "typescript": "^5.9.2"
+  }
+}

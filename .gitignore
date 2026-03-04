@@ -1,0 +1,36 @@
+# compiled binary
+tailport
+
+# environment variables
+.env
+.env.local
+.env.*.local
+
+# dependencies
+node_modules/
+
+# Bun
+bun.lockb
+
+# build output
+dist/
+out/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# editor
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# logs
+*.log
+npm-debug.log*
+
+# cloudflared credentials (self-hosted)
+*.json
+!package.json
+!tsconfig.json
