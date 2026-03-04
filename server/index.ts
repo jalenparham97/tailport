@@ -3,8 +3,10 @@ import type { WSData } from './registry';
 import { forwardRequest } from './proxy';
 
 // Start cloudflared tunnel when running on Railway (or any env with token set)
+// Keep reference alive to prevent garbage collection from killing the subprocess
+let _cloudflared: ReturnType<typeof Bun.spawn> | null = null;
 if (Bun.env.CLOUDFLARE_TUNNEL_TOKEN) {
-  Bun.spawn(
+  _cloudflared = Bun.spawn(
     [
       'cloudflared',
       'tunnel',
@@ -17,6 +19,9 @@ if (Bun.env.CLOUDFLARE_TUNNEL_TOKEN) {
       stderr: 'inherit',
     },
   );
+  _cloudflared.exited.then((code) => {
+    console.error(`[server] cloudflared exited with code ${code}`);
+  });
   console.log('[server] cloudflared tunnel starting...');
 }
 
