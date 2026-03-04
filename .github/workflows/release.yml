@@ -1,20 +1,42 @@
-name: Release
+name: Bump Version & Publish Release
 
 on:
   push:
-    tags:
-      - 'v*'
+    branches:
+      - main
 
 permissions:
   contents: write
 
 jobs:
   release:
-    name: Build and release
+    # Skip the bump commit itself to avoid infinite loop
+    if: "!startsWith(github.event.head_commit.message, 'chore: bump')"
+    name: Bump, build, and release
     runs-on: ubuntu-latest
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Configure git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Bump patch version
+        id: bump
+        run: |
+          current=$(jq -r .version package.json)
+          IFS='.' read -r major minor patch <<< "$current"
+          new="$major.$minor.$((patch + 1))"
+          jq ".version = \"$new\"" package.json > tmp.json && mv tmp.json package.json
+          git commit -am "chore: bump v$new"
+          git tag "v$new"
+          git push origin main
+          echo "tag=v$new" >> $GITHUB_OUTPUT
 
       - uses: oven-sh/setup-bun@v2
 
@@ -31,6 +53,7 @@ jobs:
       - name: Upload release assets
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ steps.bump.outputs.tag }}
           files: |
             tailport-darwin-arm64
             tailport-darwin-x64
