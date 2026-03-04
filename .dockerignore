@@ -1,0 +1,36 @@
+# compiled binary
+
+tailport
+
+# environment variables
+
+.env
+.env.\*
+
+# dependencies (installed inside container)
+
+node_modules/
+
+# CLI source (not needed for server image)
+
+cli/
+router/
+
+# git
+
+.git/
+.gitignore
+
+# editor / OS
+
+.vscode/
+.idea/
+.DS_Store
+
+# docs
+
+README.md
+
+# lockfiles (bun.lock is copied explicitly)
+
+bun.lockb
