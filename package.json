@@ -5,10 +5,11 @@
   "type": "module",
   "scripts": {
     "dev": "bun run cli/index.ts",
-    "start": "bun run cli/index.ts start",
     "build": "bun build cli/index.ts --compile --outfile tailport",
     "server": "bun run server/index.ts",
-    "typecheck": "bunx tsc --noEmit"
+    "typecheck": "bunx tsc --noEmit",
+    "release:minor": "bunx bumpp minor --commit --tag --push",
+    "release:major": "bunx bumpp major --commit --tag --push"
   },
   "devDependencies": {
     "bun-types": "latest",

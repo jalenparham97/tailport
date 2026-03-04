@@ -1,37 +1,22 @@
 import { runAuthCommand } from './commands/auth';
 import { runExposeCommand } from './commands/expose';
 import { runListCommand } from './commands/list';
-import { runRemoveCommand } from './commands/remove';
-import { runSetupCommand } from './commands/setup';
-import { runStartCommand } from './commands/start';
 
 function printHelp(): void {
   console.log(`tailport
 
 Usage:
-  tailport auth login <token>
-  tailport expose <name> <target>
-  tailport remove <name>
-  tailport list
-  tailport setup
-  tailport start`);
+  tailport auth login <token>      Save your auth token
+  tailport expose <name> <target>  Expose a local port
+  tailport list                    Show active tunnels`);
 }
 
 async function main(): Promise<void> {
   const [, , command, ...args] = Bun.argv;
 
   switch (command) {
-    case 'setup':
-      await runSetupCommand();
-      return;
-    case 'start':
-      await runStartCommand();
-      return;
     case 'expose':
       await runExposeCommand(args[0], args[1]);
-      return;
-    case 'remove':
-      await runRemoveCommand(args[0]);
       return;
     case 'list':
       await runListCommand();

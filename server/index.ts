@@ -1,4 +1,9 @@
-import { register, resolvePending, unregister } from './registry';
+import {
+  listSubdomains,
+  register,
+  resolvePending,
+  unregister,
+} from './registry';
 import type { WSData } from './registry';
 import { forwardRequest } from './proxy';
 import { timingSafeEqual } from 'node:crypto';
@@ -84,6 +89,22 @@ Bun.serve<WSData>({
         return undefined;
       }
       return new Response('tailport control endpoint\n', { status: 200 });
+    }
+
+    // Active tunnels list — called by `tailport list`
+    if (!subdomain && url.pathname === '/api/tunnels') {
+      const token = (req.headers.get('authorization') ?? '').replace(
+        /^Bearer\s+/i,
+        '',
+      );
+      if (!validateToken(token)) {
+        return new Response('Unauthorized\n', { status: 401 });
+      }
+      const tunnels = listSubdomains().map((s) => ({
+        subdomain: s,
+        url: `https://${s}.${DOMAIN}`,
+      }));
+      return Response.json({ tunnels });
     }
 
     // Incoming request for a user subdomain — proxy it

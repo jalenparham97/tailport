@@ -69,3 +69,7 @@ export function resolvePending(
 export function removePending(subdomain: string, id: string): void {
   pending.get(subdomain)?.delete(id);
 }
+
+export function listSubdomains(): string[] {
+  return Array.from(registry.keys()).sort();
+}

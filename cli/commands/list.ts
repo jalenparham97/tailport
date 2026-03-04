@@ -1,33 +1,38 @@
-import { DEFAULT_DOMAIN } from '../../lib/config';
-import { loadRoutes } from '../../lib/routes';
+import { getAuthFilePath, TAILPORT_SERVER_URL } from '../../lib/config';
 
-function pad(value: string, width: number): string {
-  return value.padEnd(width, ' ');
-}
+type Tunnel = { subdomain: string; url: string };
 
 export async function runListCommand(): Promise<void> {
-  const routes = await loadRoutes();
-  const entries = Object.entries(routes).sort(([a], [b]) => a.localeCompare(b));
+  const file = Bun.file(getAuthFilePath());
+  const token: string | null = (await file.exists())
+    ? (((await file.json()) as { token?: string }).token ?? null)
+    : null;
 
-  if (entries.length === 0) {
-    console.log('No active services.');
+  if (!token) {
+    throw new Error('Not authenticated. Run: tailport auth login <token>');
+  }
+
+  const res = await fetch(`${TAILPORT_SERVER_URL}/api/tunnels`, {
+    headers: { authorization: `Bearer ${token}` },
+  });
+
+  if (!res.ok) {
+    throw new Error(`Server returned ${res.status}`);
+  }
+
+  const { tunnels } = (await res.json()) as { tunnels: Tunnel[] };
+
+  if (tunnels.length === 0) {
+    console.log('No active tunnels.');
     return;
   }
 
   const nameWidth = Math.max(
-    'Name'.length,
-    ...entries.map(([name]) => name.length),
+    'Subdomain'.length,
+    ...tunnels.map((t) => t.subdomain.length),
   );
-  const targetWidth = Math.max(
-    'Target'.length,
-    ...entries.map(([, target]) => target.length),
-  );
-
-  console.log(`${pad('Name', nameWidth)}  ${pad('Target', targetWidth)}  URL`);
-
-  for (const [name, target] of entries) {
-    console.log(
-      `${pad(name, nameWidth)}  ${pad(target, targetWidth)}  https://${name}.${DEFAULT_DOMAIN}`,
-    );
+  console.log(`${'Subdomain'.padEnd(nameWidth)}  URL`);
+  for (const t of tunnels) {
+    console.log(`${t.subdomain.padEnd(nameWidth)}  ${t.url}`);
   }
 }
