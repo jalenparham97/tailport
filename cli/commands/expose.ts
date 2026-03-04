@@ -38,11 +38,9 @@ async function runHostedExpose(
   serverUrl: string,
   token: string,
 ): Promise<void> {
-  // Normalise local target to a full URL
   const upstream = target.includes('://')
     ? target
     : `http://localhost:${target}`;
-  // Use the reserved 'connect' subdomain — covered by *.domain wildcard, no apex DNS needed
   const serverOrigin = new URL(serverUrl);
   const isLocal =
     serverOrigin.hostname === 'localhost' ||
@@ -53,94 +51,143 @@ async function runHostedExpose(
   const wsScheme = serverOrigin.protocol === 'https:' ? 'wss' : 'ws';
   const wsUrl = `${wsScheme}://${wsHost}`;
 
+  let shuttingDown = false;
+
+  const cleanup = () => {
+    shuttingDown = true;
+    process.exit(0);
+  };
+  process.on('SIGINT', cleanup);
+  process.on('SIGTERM', cleanup);
+
   console.log(`[tailport] connecting to ${serverUrl}...`);
-  const ws = new WebSocket(wsUrl);
 
-  await new Promise<void>((resolve, reject) => {
-    ws.addEventListener('error', () => {
-      reject(new Error(`Could not connect to tailport server at ${wsUrl}`));
-    });
-    ws.addEventListener('open', () => {
-      ws.send(JSON.stringify({ type: 'register', subdomain: name, token }));
-    });
+  const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
-    ws.addEventListener('message', async (event) => {
-      let msg: Record<string, unknown>;
-      try {
-        msg = JSON.parse(event.data as string);
-      } catch {
-        return;
-      }
+  let attempt = 0;
 
-      if (msg.type === 'registered') {
-        console.log(`[tailport] tunnel open: ${msg.url}`);
-        console.log(`[tailport] forwarding -> ${upstream}`);
-        console.log('[tailport] press Ctrl+C to disconnect');
-        resolve();
-        return;
-      }
+  while (!shuttingDown) {
+    attempt++;
+    try {
+      await new Promise<void>((resolve, reject) => {
+        const ws = new WebSocket(wsUrl);
+        let registered = false;
 
-      if (msg.type === 'error') {
-        reject(new Error(String(msg.message)));
-        return;
-      }
+        ws.addEventListener('error', () => {
+          if (!registered) {
+            reject(
+              new Error(`Could not connect to tailport server at ${wsUrl}`),
+            );
+          } else {
+            ws.close();
+            resolve(); // trigger reconnect
+          }
+        });
 
-      if (msg.type === 'request') {
-        const { id, method, path, headers, body } = msg as {
-          id: string;
-          method: string;
-          path: string;
-          headers: Record<string, string>;
-          body: string;
-        };
+        ws.addEventListener('open', () => {
+          ws.send(JSON.stringify({ type: 'register', subdomain: name, token }));
+        });
 
-        try {
-          const res = await fetch(`${upstream}${path}`, {
-            method,
-            headers,
-            body: body ? Buffer.from(body, 'base64') : undefined,
-          });
+        ws.addEventListener('close', () => resolve());
 
-          const resBody = Buffer.from(await res.arrayBuffer()).toString(
-            'base64',
-          );
-          const resHeaders: Record<string, string> = {};
-          res.headers.forEach((v, k) => {
-            resHeaders[k] = v;
-          });
+        ws.addEventListener('message', async (event) => {
+          try {
+            let msg: Record<string, unknown>;
+            try {
+              msg = JSON.parse(event.data as string);
+            } catch {
+              return;
+            }
 
-          ws.send(
-            JSON.stringify({
-              type: 'response',
-              id,
-              status: res.status,
-              headers: resHeaders,
-              body: resBody,
-            }),
-          );
-        } catch (err) {
-          ws.send(
-            JSON.stringify({
-              type: 'response',
-              id,
-              status: 502,
-              headers: {},
-              body: '',
-            }),
-          );
-        }
-      }
-    });
-  });
+            if (msg.type === 'registered') {
+              registered = true;
+              if (attempt > 1) {
+                console.log(`[tailport] reconnected: ${msg.url}`);
+              } else {
+                console.log(`[tailport] tunnel open: ${msg.url}`);
+                console.log(`[tailport] forwarding -> ${upstream}`);
+                console.log('[tailport] press Ctrl+C to disconnect');
+              }
+              attempt = 0;
+              return;
+            }
 
-  // Keep process alive until Ctrl+C
-  await new Promise<void>((resolve) => {
-    const cleanup = () => {
-      ws.close();
-      resolve();
-    };
-    process.on('SIGINT', cleanup);
-    process.on('SIGTERM', cleanup);
-    ws.addEventListener('close', () => resolve());
-  });
+            if (msg.type === 'error') {
+              // Server rejections (bad token, subdomain taken) are always fatal
+              reject(new Error(String(msg.message)));
+              return;
+            }
+
+            if (msg.type === 'request') {
+              const { id, method, path, headers, body } = msg as {
+                id: string;
+                method: string;
+                path: string;
+                headers: Record<string, string>;
+                body: string;
+              };
+
+              try {
+                const res = await fetch(`${upstream}${path}`, {
+                  method,
+                  headers,
+                  body: body ? Buffer.from(body, 'base64') : undefined,
+                });
+
+                const resBody = Buffer.from(await res.arrayBuffer()).toString(
+                  'base64',
+                );
+                const resHeaders: Record<string, string> = {};
+                res.headers.forEach((v, k) => {
+                  resHeaders[k] = v;
+                });
+
+                ws.send(
+                  JSON.stringify({
+                    type: 'response',
+                    id,
+                    status: res.status,
+                    headers: resHeaders,
+                    body: resBody,
+                  }),
+                );
+              } catch {
+                // Local app is down or errored — return 502, keep tunnel alive
+                ws.send(
+                  JSON.stringify({
+                    type: 'response',
+                    id,
+                    status: 502,
+                    headers: { 'content-type': 'text/plain' },
+                    body: Buffer.from('Local server unavailable').toString(
+                      'base64',
+                    ),
+                  }),
+                );
+              }
+            }
+          } catch {
+            // Swallow any unexpected error to keep the tunnel alive
+          }
+        });
+      });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      // Always hard-fail for server rejections (bad token, subdomain taken)
+      const isServerRejection =
+        msg.includes('invalid token') ||
+        msg.includes('subdomain already taken') ||
+        msg.includes('subdomain is reserved');
+      if (isServerRejection) throw err;
+      // First connection failure to relay server should also exit
+      if (attempt === 1 && msg.includes('Could not connect')) throw err;
+      console.log(`[tailport] disconnected: ${msg}`);
+    }
+
+    if (!shuttingDown) {
+      const delay = Math.min(1000 * attempt, 10000);
+      console.log(`[tailport] reconnecting in ${delay / 1000}s...`);
+      await sleep(delay);
+    }
+  }
 }
