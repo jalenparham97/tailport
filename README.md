@@ -30,8 +30,8 @@ curl -fsSL https://raw.githubusercontent.com/jalenparham97/tailport/main/scripts
 ## Usage
 
 ```bash
-# Authenticate (one time)
-tailport auth login <your-token>
+# Authenticate (one time) — use the TAILPORT_TOKEN_SECRET value from the server
+tailport auth login <TAILPORT_TOKEN_SECRET>
 
 # Expose a local server
 tailport expose myapp 3000
@@ -52,10 +52,9 @@ tailport remove myapp
 ### `tailport auth`
 
 ```bash
-tailport auth login <token>   # Save your auth token
+tailport auth login <token>   # Save your TAILPORT_TOKEN_SECRET as the auth token
 tailport auth logout          # Remove saved token
 tailport auth token           # Print current token
-tailport auth generate        # Generate a token (admin, requires TAILPORT_TOKEN_SECRET)
 ```
 
 ---
