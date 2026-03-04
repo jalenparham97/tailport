@@ -1,6 +1,7 @@
 import { runAuthCommand } from './commands/auth';
 import { runExposeCommand } from './commands/expose';
 import { runListCommand } from './commands/list';
+import { runUpgradeCommand } from './commands/upgrade';
 
 function printHelp(): void {
   console.log(`tailport
@@ -8,13 +9,17 @@ function printHelp(): void {
 Usage:
   tailport auth login <token>      Save your auth token
   tailport expose <name> <target>  Expose a local port
-  tailport list                    Show active tunnels`);
+  tailport list                    Show active tunnels
+  tailport upgrade                 Upgrade to the latest version`);
 }
 
 async function main(): Promise<void> {
   const [, , command, ...args] = Bun.argv;
 
   switch (command) {
+    case 'upgrade':
+      await runUpgradeCommand();
+      return;
     case 'expose':
       await runExposeCommand(args[0], args[1]);
       return;
